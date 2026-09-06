@@ -1,24 +1,18 @@
 # ChronosAssist
 
-A training panel for the Chronos fight in Hades II: what he is doing, what he
-can do next, and how far the fight has to go.
+**Shows you what Chronos is about to do, while you still have time to react.**
 
-**Status: stage 3 of 3 (see `CHRONOS_TRAINER_SPEC.md`) -- feature-complete,
-not yet playtested.** A top-left box shows:
+A small box in the top-left names his current attack and drains a bar over its
+wind-up, tells you which attacks he cannot use right now and why, and counts
+down to the next phase. During his two instant-kill attacks a marker under
+Melinoe turns green when you are standing somewhere safe and red when you are
+not.
 
-- the header (phase and stage)
-- the current attack: its name, a draining wind-up bar, what it does, and
-  (inside a combo) what comes next
-- a milestone line: how far to the next stage, and to the phase after that
-- status lines while a shield or a healer is active
-- the UNAVAILABLE grid: which attacks he can't currently use, and why
+Every attack in the fight telegraphs for between half a second and nearly four
+seconds. The game just never shows you that.
 
-Stage 1's log (`LogOutput.log`, every line prefixed `[ChronosAssist]`) is
-unchanged and still runs underneath it.
-
-Writes nothing to your save. Two settings: `Enabled` (master switch) and
-`Panel` (the on-screen box). A third, `GroundMarker`, is declared for a later
-stage and does nothing yet.
+Not yet playtested. It writes nothing to your save, and turning it off leaves
+the fight completely vanilla.
 
 ## Installing for a playtest (not yet on Thunderstore)
 
