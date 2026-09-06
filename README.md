@@ -51,3 +51,12 @@ adjust; every one of those numbers is a single named constant.
   how this one is drawn -- `CreateScreenObstacle` plus a screen-anchor
   registry, updated in place rather than destroyed and recreated. It sits
   bottom-right; this panel goes top-left so the two run together.
+
+Built on [ReturnOfModding / Hell2Modding](https://github.com/SGG-Modding). This
+mod cannot load without `LuaENVY-ENVY`, `SGG_Modding-ModUtil` and
+`SGG_Modding-ReLoad` — the environment isolation, the function wrapping and the
+hot reload are all theirs.
+
+Thank you to the Hades Modding community. Your work is astounding.
+
+Built by Adicon, with Claude.
