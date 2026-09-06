@@ -196,7 +196,7 @@ rather than guess, the background's visibility is `SetColor`'s alpha channel,
 which is unambiguously documented to work on this exact obstacle type
 (`SetColor({Id=..., Color=readBackgroundcolor()})`, same file, :543). The
 practical cost: the background snaps instead of smoothly fading, while the
-text above it eases in over `FADE_DURATION`. Worth revisiting once Caleb
+text above it eases in over `FADE_DURATION`. Worth revisiting once the maintainer
 confirms whether `FadeTarget` on a plain obstacle works at all.
 
 ### Why one persistent watcher thread, not one per fight (unlike RealHecate)
@@ -311,7 +311,7 @@ block -- at that point imprecision is honestly disclosed (the row visibly
 reads as unpolished, `"blocked (GateName)"`, not textpass wording) rather
 than hidden.
 
-## Open items for Caleb's first playtest
+## Open items for the first playtest
 
 Per spec section 3.1 and 9.1:
 
@@ -353,7 +353,7 @@ Stage 2 adds, on top of the above:
 Stage 3 adds:
 
 12. **The 6->7 transition's "what changes" text** -- the one gap in
-    `WHAT_CHANGES`. If Caleb can say what actually arrives crossing that
+    `WHAT_CHANGES`. If the maintainer can say what actually arrives crossing that
     boundary, textpass can add a seventh phrase and this stops being blank.
 13. Whether `phaseEndThreshold` ever previews a stale percentage under the
     Vow of Rivals (see the section above) -- only reachable in a Rivals run.

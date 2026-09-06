@@ -75,7 +75,7 @@ end
 -- Settings
 -- =============================================================================
 -- All three from spec section 6. GroundMarker is declared and wired to
--- nothing -- reserved for Caleb's stage 4, per the spec's explicit
+-- nothing -- reserved for the maintainer's stage 4, per the spec's explicit
 -- instruction. Panel and Enabled both gate whether any screen component is
 -- created at all (test case 11): read once at install, "applies at next
 -- launch/reload" like the equivalent structural settings in sibling mods.
@@ -618,7 +618,7 @@ function CONFIG.statusLines(game, enemy)
     -- research section 19.2: "beaming" is the real trigger, but no live
     -- boolean for that was found -- a live TimeElemental2 is the best
     -- available proxy (stage 1 already established the count is readable).
-    -- Flagged for Caleb: confirm this doesn't fire while one is alive but
+    -- Flagged for the maintainer: confirm this doesn't fire while one is alive but
     -- not yet casting.
     if CONFIG.countTempus(game) > 0 then
         lines[#lines + 1] = "\xe2\x9f\xb2 Tempus healing \xe2\x80\x94 kill the adds"
@@ -727,7 +727,7 @@ end
 -- alpha-toggle vs the text anchors' FadeTarget, and for the layout constants.
 -- =============================================================================
 
--- First-guess starting values, not yet seen on screen (Caleb drives all
+-- First-guess starting values, not yet seen on screen (the maintainer drives all
 -- playtesting -- MODDING_HADES2.md section 5). ObjectiveStartX/Y = 130/150
 -- (HUDData.lua:13-14) is the nearest confirmed real HUD element; this sits
 -- below where a short 1-2 line objective text would end. Width/height
