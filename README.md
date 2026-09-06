@@ -41,6 +41,7 @@ adjust; every one of those numbers is a single named constant.
 ## Credits
 
 - **Supergiant Games**, for Chronos and the fight this panel is built around.
+  The icon is a cropped in-game portrait of Chronos.
 - The **Hades Wiki**'s Chronos/Combat pages, for the attack inventory and
   the observation that the rift attack "deals damage in the full arc between
   Chronos and itself" despite its shape -- the premise this whole panel acts on.
