@@ -96,7 +96,7 @@ local settings = {
 local CONFIG_DESCRIPTIONS = {
     Enabled = "Master switch. Off leaves the fight completely vanilla and logs nothing.",
     Panel = "The on-screen box. Off creates no screen components at all. Applies at next launch/reload.",
-    GroundMarker = "Reserved for a future stage (the red/green marker under Melinoe during the two insta-kills). Declared now so the settings shape is stable; nothing reads it yet.",
+    GroundMarker = "Show a red or green marker under Melinoe during Chronos' two instant-kill attacks, and tint the panel to match. Red means you are standing somewhere that will kill you; green means you are safe. Off leaves the panel text to carry it alone.",
 }
 
 local function sectionFor(_)
@@ -751,6 +751,11 @@ local LAYOUT = {
     BAR_WIDTH_PX = 220,
     BAR_HEIGHT_PX = 10,
     BACKGROUND_COLOR = { 0.05, 0.05, 0.09, 0.6 },
+    -- Stage 4. The box is tinted to match the ground marker so peripheral
+    -- vision catches the flip; alpha stays low so the text remains readable.
+    PANEL_COLOR = { 0.05, 0.05, 0.09, 0.6 },
+    SAFE_COLOR = { 0.06, 0.30, 0.10, 0.72 },
+    UNSAFE_COLOR = { 0.36, 0.05, 0.06, 0.72 },
     BAR_COLOR = { 0.85, 0.75, 0.35, 1.0 },
     FADE_DURATION = 0.2,
     -- Row offsets, in LINE_HEIGHT units, for the anchors below the fixed
@@ -778,6 +783,119 @@ local Panel = {
     lastText = {},        -- change-detection memo: anchor name -> last Text
     lastBarFraction = nil,
 }
+
+-- =============================================================================
+-- Stage 4 -- the safe/unsafe indicator for the two insta-kills.
+--
+-- Both deal 999 with IgnoreDodge = true, so position is the only answer, and
+-- their rules are OPPOSITE. PreviousWeaponNot forces them to alternate
+-- (WeaponData_Chronos.lua), so misreading one sends the player exactly the
+-- wrong way. That is the whole reason this exists.
+--
+-- Geometry is read off disk, not derived. Content\Game\Projectiles\
+-- Enemy_BiomeI_Projectiles.sjson:
+--
+--   ChronosCircle              DamageRadius 400,  no hollow  -> kills 0..400
+--   ChronosCircleInverted      DamageRadius 9000, Hollow 8300 -> kills 700..
+--   ChronosCircleInvertedSmall DamageRadius 9000, Hollow 8850 -> kills 150..
+--
+-- A "hollow blast" damages from (DamageRadius - HollowBlastRadiusBand) outward,
+-- so the hollow centre is the safe part. Hence:
+--
+--   CLOCK BURST (ChronosRadial2, both circles at Chronos) -- safe 400..700
+--   TIME BURST  (ChronosRadial3, one circle at a ClockFacePoint) -- safe 0..150
+--
+-- All three carry DamageRadiusScaleX = 1.175 and DamageRadiusScaleY = 0.6, so
+-- every zone is an ellipse. Normalise the offset by those before comparing to
+-- a radius; comparing raw distance would be wrong on both axes.
+-- =============================================================================
+
+local SAFE = {
+    SCALE_X = 1.175,
+    SCALE_Y = 0.6,
+    CLOCK_BURST_INNER = 400,
+    CLOCK_BURST_OUTER = 700,
+    TIME_BURST_RADIUS = 150,
+    -- Field stashed on the enemy, namespaced per MODDING_HADES2 section 2.
+    TARGET_FIELD = "ChronosAssist_BurstTargetId",
+}
+
+-- The two weapons, and the instruction each shows. Text is fixed --
+-- CHRONOS_TEXTPASS.md section 4 -- because colour carries the state, not words.
+local BURSTS = {
+    ChronosRadial2    = { kind = "CLOCK_BURST", label = "CLOCK BURST",
+                          instruction = "move toward center ring" },
+    ChronosRadial3    = { kind = "TIME_BURST",  label = "TIME BURST",
+                          instruction = "run to the lit clock numeral" },
+    ChronosRadial3_EM = { kind = "TIME_BURST",  label = "TIME BURST",
+                          instruction = "run to the lit clock numeral",
+                          bubbles = true },
+}
+
+function CONFIG.burstFor(weaponName)
+    return weaponName ~= nil and BURSTS[weaponName] or nil
+end
+
+-- Distance from (x1,y1) to (x2,y2) with the isometric squash removed, so it can
+-- be compared against a DamageRadius directly.
+function CONFIG.normalisedDistance(x1, y1, x2, y2)
+    if x1 == nil or y1 == nil or x2 == nil or y2 == nil then return nil end
+    local dx = (x2 - x1) / SAFE.SCALE_X
+    local dy = (y2 - y1) / SAFE.SCALE_Y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+-- nil means "cannot tell" -- never guess. A wrong green on a 999 is worse than
+-- no indicator at all, so every unknown returns nil and the caller shows no
+-- colour rather than a colour it cannot justify.
+function CONFIG.isSafeFrom(kind, distance)
+    if distance == nil then return nil end
+    if kind == "CLOCK_BURST" then
+        return distance > SAFE.CLOCK_BURST_INNER and distance < SAFE.CLOCK_BURST_OUTER
+    elseif kind == "TIME_BURST" then
+        return distance < SAFE.TIME_BURST_RADIUS
+    end
+    return nil
+end
+
+-- Returns nil when no insta-kill is winding up. Otherwise the label, the fixed
+-- instruction, and safe = true/false/nil.
+--
+-- CLOCK BURST measures from Chronos: both its circles are anchored on him.
+-- TIME BURST measures from the ClockFacePoint the game itself chose -- captured
+-- from GetTargetId (see installSafeZoneHook). If that capture failed, safe is
+-- nil and the instruction still shows.
+function CONFIG.safeZoneState(game, enemy)
+    if not settings.values.Enabled or not settings.values.GroundMarker then return nil end
+    if enemy == nil then return nil end
+    local burst = CONFIG.burstFor(enemy.WeaponName)
+    if burst == nil then return nil end
+
+    local hero = game.CurrentRun and game.CurrentRun.Hero
+    local heroId = hero and hero.ObjectId
+    local hx, hy = nil, nil
+    if heroId ~= nil and type(game.GetLocation) == "function" then
+        local loc = game.GetLocation({ Id = heroId })
+        hx, hy = loc and loc.X, loc and loc.Y
+    end
+
+    local cx, cy = nil, nil
+    local anchorId = enemy.ObjectId
+    if burst.kind == "TIME_BURST" then anchorId = enemy[SAFE.TARGET_FIELD] end
+    if anchorId ~= nil and type(game.GetLocation) == "function" then
+        local loc = game.GetLocation({ Id = anchorId })
+        cx, cy = loc and loc.X, loc and loc.Y
+    end
+
+    local distance = CONFIG.normalisedDistance(cx, cy, hx, hy)
+    return {
+        kind = burst.kind,
+        label = burst.label,
+        instruction = burst.instruction,
+        bubbles = burst.bubbles == true,
+        safe = CONFIG.isSafeFrom(burst.kind, distance),
+    }
+end
 
 local function makeTextBox(game, name, x, y, offsetY)
     ScreenAnchors[name] = game.CreateScreenObstacle({ Name = "BlankObstacle", X = x, Y = y + (offsetY or 0) })
@@ -881,6 +999,70 @@ local function writeMultilineIfChanged(game, name, lines)
     end
 end
 
+-- The marker under Melinoe. Attached to the hero, tinted red or green, shown
+-- only while an insta-kill is winding up.
+--
+-- This is the half that matters: during a 999 wind-up the player is watching
+-- their character and the arena, not a box in the corner. The panel says what
+-- to do once; the marker says whether they have done it yet, with no eye
+-- movement. Same technique as RealHecate's ground marker, attached to the hero
+-- instead of an enemy.
+local MARKER_ANIM = "ApolloGroundGlow"
+local Marker = { attached = false, lastSafe = nil }
+
+local function setMarker(game, state)
+    if not settings.values.Enabled or not settings.values.GroundMarker then
+        state = nil
+    end
+    local hero = game.CurrentRun and game.CurrentRun.Hero
+    local heroId = hero and hero.ObjectId
+    if heroId == nil then return end
+
+    -- No insta-kill, or we cannot justify a colour: take the marker away.
+    -- Showing a colour we are not sure of is the one failure this feature
+    -- cannot have, so "unknown" is treated exactly like "no attack".
+    if state == nil or state.safe == nil then
+        if Marker.attached then
+            if type(game.StopAnimation) == "function" then
+                game.StopAnimation({ Name = MARKER_ANIM, DestinationId = heroId })
+            end
+            Marker.attached = false
+            Marker.lastSafe = nil
+        end
+        return
+    end
+
+    if not Marker.attached then
+        if type(game.CreateAnimation) ~= "function" then return end
+        game.CreateAnimation({ Name = MARKER_ANIM, DestinationId = heroId })
+        Marker.attached = true
+        Marker.lastSafe = nil
+    end
+
+    if Marker.lastSafe ~= state.safe and type(game.SetColor) == "function" then
+        Marker.lastSafe = state.safe
+        game.SetColor({
+            Id = heroId,
+            Color = state.safe and { 0.2, 1.0, 0.3, 1.0 } or { 1.0, 0.15, 0.15, 1.0 },
+            Duration = 0,
+        })
+    end
+end
+
+-- The panel box tinted to match, so peripheral vision catches the flip even
+-- when the text goes unread.
+local function setPanelTint(game, state)
+    if not Panel.created then return end
+    local tint = LAYOUT.PANEL_COLOR
+    if state ~= nil and state.safe ~= nil then
+        tint = state.safe and LAYOUT.SAFE_COLOR or LAYOUT.UNSAFE_COLOR
+    end
+    if Panel.lastTint ~= tint then
+        Panel.lastTint = tint
+        game.SetColor({ Id = ScreenAnchors["Background"], Color = tint })
+    end
+end
+
 local function renderPanel(game, primary)
     writeIfChanged(game, "HeaderStatus", CONFIG.headerText(primary))
 
@@ -906,6 +1088,19 @@ local function renderPanel(game, primary)
     local gridLines = { "UNAVAILABLE" }
     for _, row in ipairs(gridRows) do gridLines[#gridLines + 1] = row end
     writeMultilineIfChanged(game, "Grid", gridLines)
+
+    -- Stage 4. Overrides the NOW block while an insta-kill is up: its label and
+    -- fixed instruction replace the ordinary lines, since nothing else on the
+    -- panel matters for those 3.77 seconds.
+    local safeState = CONFIG.safeZoneState(game, primary)
+    if safeState ~= nil then
+        writeIfChanged(game, "NowDescription", safeState.instruction)
+        if safeState.bubbles then
+            writeIfChanged(game, "NowCombo", "2 big bubbles")
+        end
+    end
+    setMarker(game, safeState)
+    setPanelTint(game, safeState)
 end
 
 -- The one real Chronos if he is alive; a live shadow only as a fallback (a
@@ -978,6 +1173,24 @@ local function installHooks(game)
     -- Wraps every enemy's weapon selection in the game -- SelectWeapon is not
     -- Chronos-specific -- but isTrackedChronos exits immediately for anything
     -- else, so the cost elsewhere is one extra call.
+    -- Stage 4. GetTargetId (EnemyAILogic.lua:5372) is where the game picks the
+    -- ClockFacePoint that Time Burst makes safe -- TargetFromGroup =
+    -- "ClockFacePoints", TargetMinDistance = 800. Let it choose, then read the
+    -- answer: the same "submit to the game's own judge" pattern WheresEris
+    -- uses, so the marker can never point somewhere vanilla would not have.
+    -- Post-wrap only; the return value is passed through untouched.
+    ModUtil.Path.Wrap("GetTargetId", function(base, enemy, aiData)
+        local targetId = base(enemy, aiData)
+        local ok = pcall(function()
+            if CONFIG.isTrackedChronos(enemy)
+                and aiData ~= nil and aiData.TargetFromGroup == "ClockFacePoints" then
+                enemy[SAFE.TARGET_FIELD] = targetId
+            end
+        end)
+        if not ok then enemy[SAFE.TARGET_FIELD] = nil end
+        return targetId
+    end)
+
     ModUtil.Path.Wrap("SelectWeapon", function(base, enemy)
         if not settings.values.Enabled or not CONFIG.isTrackedChronos(enemy) then
             return base(enemy)

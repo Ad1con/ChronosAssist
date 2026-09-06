@@ -886,6 +886,123 @@ end
 
 -- =============================================================================
 -- Summary
+
+-- =============================================================================
+-- 21. Stage 4 -- the safe/unsafe indicator for the two insta-kills.
+--
+-- Geometry from Enemy_BiomeI_Projectiles.sjson, recorded in
+-- CHRONOS_RESEARCH.md section 10.0. Clock Burst is safe in the 400..700 band
+-- around Chronos; Time Burst is safe within 150 of the ClockFacePoint the game
+-- chose. Both ellipses: ScaleX 1.175, ScaleY 0.6.
+-- =============================================================================
+do
+  local G, plugin = boot()
+  local C = plugin.CONFIG
+
+  -- Pure geometry first. A raw distance would pass these by accident, so each
+  -- uses an offset where the squash changes the answer.
+  local d = C.normalisedDistance(0, 0, 1.175 * 500, 0)
+  check("21.1 X offset is divided by 1.175", math.abs(d - 500) < 0.01, tostring(d))
+  d = C.normalisedDistance(0, 0, 0, 0.6 * 500)
+  check("21.2 Y offset is divided by 0.6", math.abs(d - 500) < 0.01, tostring(d))
+
+  check("21.3 Clock Burst: inside the inner circle is NOT safe",
+        C.isSafeFrom("CLOCK_BURST", 399) == false, "399")
+  check("21.4 Clock Burst: in the band is safe",
+        C.isSafeFrom("CLOCK_BURST", 550) == true, "550")
+  check("21.5 Clock Burst: outside the band is NOT safe",
+        C.isSafeFrom("CLOCK_BURST", 701) == false, "701")
+  check("21.6 Time Burst: inside 150 is safe",
+        C.isSafeFrom("TIME_BURST", 149) == true, "149")
+  check("21.7 Time Burst: outside 150 is NOT safe",
+        C.isSafeFrom("TIME_BURST", 151) == false, "151")
+
+  -- The rules are opposite. Standing on Chronos survives one and kills you in
+  -- the other; this is the whole reason the feature exists.
+  check("21.8 the two rules disagree at the same distance",
+        C.isSafeFrom("CLOCK_BURST", 100) == false and C.isSafeFrom("TIME_BURST", 100) == true,
+        "100")
+
+  check("21.9 an unknown distance is nil, never a guess",
+        C.isSafeFrom("CLOCK_BURST", nil) == nil, "nil")
+  check("21.10 an unknown attack kind is nil",
+        C.isSafeFrom("SOMETHING_ELSE", 500) == nil, "nil")
+end
+
+do
+  local G, plugin = boot()
+  local C = plugin.CONFIG
+  local chronos = { Name = "Chronos", ObjectId = 10, WeaponName = "ChronosRadial2" }
+  G.CurrentRun.Hero = { ObjectId = 1 }
+  G.locations[10] = { X = 0, Y = 0 }
+
+  -- 550 normalised: inside the band.
+  G.locations[1] = { X = 1.175 * 550, Y = 0 }
+  local st = C.safeZoneState(G, chronos)
+  check("21.11 Clock Burst in the band reports safe", st ~= nil and st.safe == true, tostring(st and st.safe))
+  check("21.12 and its instruction is the fixed textpass string",
+        st.instruction == "move toward center ring", st.instruction)
+
+  G.locations[1] = { X = 1.175 * 200, Y = 0 }
+  st = C.safeZoneState(G, chronos)
+  check("21.13 Clock Burst inside the inner circle reports unsafe", st.safe == false, tostring(st.safe))
+
+  chronos.WeaponName = "ChronosScytheThrow"
+  check("21.14 an ordinary attack produces no indicator",
+        C.safeZoneState(G, chronos) == nil, "nil")
+end
+
+do
+  -- Time Burst measures from the ClockFacePoint the GAME chose, captured out
+  -- of GetTargetId rather than guessed.
+  local G, plugin = boot()
+  local C = plugin.CONFIG
+  local chronos = { Name = "Chronos", ObjectId = 10, WeaponName = "ChronosRadial3" }
+  G.CurrentRun.Hero = { ObjectId = 1 }
+  G.locations[10] = { X = 0, Y = 0 }
+  G.locations[77] = { X = 3000, Y = 3000 }
+
+  G.nextTargetId = 77
+  G.GetTargetId(chronos, { TargetFromGroup = "ClockFacePoints" })
+  check("21.15 the chosen ClockFacePoint is captured",
+        chronos.ChronosAssist_BurstTargetId == 77, tostring(chronos.ChronosAssist_BurstTargetId))
+
+  G.locations[1] = { X = 3000 + 1.175 * 100, Y = 3000 }
+  local st = C.safeZoneState(G, chronos)
+  check("21.16 near the lit numeral is safe -- not near Chronos", st.safe == true, tostring(st.safe))
+
+  G.locations[1] = { X = 0, Y = 0 }   -- standing ON Chronos
+  st = C.safeZoneState(G, chronos)
+  check("21.17 standing on Chronos during Time Burst is UNSAFE", st.safe == false, tostring(st.safe))
+
+  chronos.ChronosAssist_BurstTargetId = nil
+  st = C.safeZoneState(G, chronos)
+  check("21.18 no captured target: safe is nil, never a guess", st.safe == nil, tostring(st.safe))
+  check("21.19 and the instruction still shows",
+        st.instruction == "run to the lit clock numeral", st.instruction)
+end
+
+do
+  local G, plugin = boot({ GroundMarker = false })
+  local C = plugin.CONFIG
+  local chronos = { Name = "Chronos", ObjectId = 10, WeaponName = "ChronosRadial2" }
+  G.CurrentRun.Hero = { ObjectId = 1 }
+  G.locations[10] = { X = 0, Y = 0 }
+  G.locations[1] = { X = 0, Y = 0 }
+  check("21.20 GroundMarker off produces no indicator at all",
+        C.safeZoneState(G, chronos) == nil, "nil")
+end
+
+do
+  local G, plugin = boot()
+  local C = plugin.CONFIG
+  local chronos = { Name = "Chronos", ObjectId = 10, WeaponName = "ChronosRadial3_EM" }
+  G.CurrentRun.Hero = { ObjectId = 1 }
+  local st = C.safeZoneState(G, chronos)
+  check("21.21 the Rivals Time Burst warns about the two big bubbles",
+        st ~= nil and st.bubbles == true, tostring(st and st.bubbles))
+end
+
 -- =============================================================================
 
 print(("%d passed, %d failed"):format(passed, failed))

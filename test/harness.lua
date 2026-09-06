@@ -273,6 +273,25 @@ G.ModUtil = {
   },
 }
 
+-- ------------------------------------------------------------ stage 4 ----
+
+-- Object positions. Tests set G.locations[id] = { X = , Y = }.
+G.locations = {}
+function G.GetLocation(args)
+  return G.locations[args and args.Id] or { X = 0, Y = 0 }
+end
+
+-- Real signature from EnemyAILogic.lua:5372. The harness returns whatever a
+-- test parks in G.nextTargetId, which stands in for the game's own choice from
+-- the ClockFacePoints group.
+G.nextTargetId = nil
+function G.GetTargetId(enemy, aiData)
+  if aiData ~= nil and aiData.TargetFromGroup ~= nil then
+    return G.nextTargetId
+  end
+  return enemy and enemy.TargetId or nil
+end
+
 -- --------------------------------------------------------- eligibility ----
 
 -- Copied from EnemyAILogic.lua:5865, translated to G.WeaponData. See its
