@@ -1,0 +1,14 @@
+{
+  "namespace": "Adicon",
+  "name": "ChronosAssist",
+  "description": "A training panel for the Chronos fight: what he is doing, what he can do next, and how far the fight has to go.",
+  "version_number": "0.3.0",
+  "dependencies": [
+    "Hell2Modding-Hell2Modding-1.0.78",
+    "LuaENVY-ENVY-1.2.0",
+    "SGG_Modding-ModUtil-4.0.1",
+    "SGG_Modding-ReLoad-1.0.2"
+  ],
+  "website_url": "https://github.com/Ad1con/ChronosAssist",
+  "FullName": "Adicon-ChronosAssist"
+}
