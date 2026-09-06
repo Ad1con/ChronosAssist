@@ -38,6 +38,27 @@ The panel's position, size and colors are first-guess starting values --
 nobody has seen them on screen yet. Playtest first, then tell me what to
 adjust; every one of those numbers is a single named constant.
 
+## How it knows what's coming
+
+It does not predict. `SelectWeapon` picks Chronos's next attack **before** the
+wind-up animation starts, so the mod wraps that function and reads
+`enemy.WeaponName` the moment the choice is made. Every attack then telegraphs
+for between 0.53 and 3.77 seconds — the panel is only surfacing a decision the
+game had already taken and never showed you.
+
+That is why there is no prediction engine, and no model of his behaviour to
+drift out of date. The one thing genuinely unpredictable — which attack he picks
+from those currently available — the panel does not guess at. It shows what is
+*unavailable* and why, using the game's own `IsEnemyWeaponEligible` rather than
+a reimplementation of the rules, so the answers cannot disagree with his.
+
+Milestones read `AIEndHealthThreshold` off the live enemy; the insta-kill safe
+zones come from `DamageRadius` and `HollowBlastRadiusBand` in the shipped
+projectile data, not from anything measured by eye.
+
+Full citations, file and line, are in the header comment of `src/main.lua` and
+in `DESIGN.md`.
+
 ## Credits
 
 - **Supergiant Games**, for Chronos and the fight this panel is built around.
