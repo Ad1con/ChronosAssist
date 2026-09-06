@@ -753,6 +753,12 @@ local LAYOUT = {
     BACKGROUND_COLOR = { 0.05, 0.05, 0.09, 0.6 },
     -- Stage 4. The box is tinted to match the ground marker so peripheral
     -- vision catches the flip; alpha stays low so the text remains readable.
+    --
+    -- TWO COLOUR SCALES LIVE IN THIS FILE. These go to SetColor on a screen
+    -- obstacle and are 0-1, matching Jowday's DamageMeter. The marker's
+    -- colours go to CreateAnimation and are 0-255. Do not "fix" either to
+    -- match the other -- both are correct for their call, and getting one
+    -- backwards yields black, which looks like the feature is simply broken.
     PANEL_COLOR = { 0.05, 0.05, 0.09, 0.6 },
     SAFE_COLOR = { 0.06, 0.30, 0.10, 0.72 },
     UNSAFE_COLOR = { 0.36, 0.05, 0.06, 0.72 },
@@ -1007,8 +1013,36 @@ end
 -- to do once; the marker says whether they have done it yet, with no eye
 -- movement. Same technique as RealHecate's ground marker, attached to the hero
 -- instead of an enemy.
+-- Sprite, not a light: a light adds to whatever the floor already is and
+-- clips toward white. RealHecate learned this over roughly fifteen playtest
+-- cycles; see its DESIGN.md.
+--
+-- Colour is CreateAnimation's Color argument as {R, G, B, A} in **0-255**, not
+-- the 0-1 the animation data itself uses. Two scales for the same idea, and
+-- getting it backwards yields a black tint that looks like nothing. Tinting
+-- the hero with SetColor would recolour Melinoe herself, not the marker.
+--
+-- Because the colour lives on the animation, changing it means stopping and
+-- recreating -- cheap, since it only happens when safe/unsafe actually flips,
+-- not every tick.
+--
+-- GUARD: do not pass Group. RealHecate's header records that copying a Group
+-- from the animation's own data filed the sprite into a render group that
+-- never draws, and it logged success while showing nothing for ten versions.
 local MARKER_ANIM = "ApolloGroundGlow"
+local MARKER_SCALE = 3.0
+local MARKER_SAFE = { 60, 235, 90, 220 }
+local MARKER_UNSAFE = { 235, 40, 40, 220 }
 local Marker = { attached = false, lastSafe = nil }
+
+local function detachMarker(game, heroId)
+    if not Marker.attached then return end
+    if type(game.StopAnimation) == "function" then
+        game.StopAnimation({ Name = MARKER_ANIM, DestinationId = heroId })
+    end
+    Marker.attached = false
+    Marker.lastSafe = nil
+end
 
 local function setMarker(game, state)
     if not settings.values.Enabled or not settings.values.GroundMarker then
@@ -1022,31 +1056,21 @@ local function setMarker(game, state)
     -- Showing a colour we are not sure of is the one failure this feature
     -- cannot have, so "unknown" is treated exactly like "no attack".
     if state == nil or state.safe == nil then
-        if Marker.attached then
-            if type(game.StopAnimation) == "function" then
-                game.StopAnimation({ Name = MARKER_ANIM, DestinationId = heroId })
-            end
-            Marker.attached = false
-            Marker.lastSafe = nil
-        end
+        detachMarker(game, heroId)
         return
     end
 
-    if not Marker.attached then
-        if type(game.CreateAnimation) ~= "function" then return end
-        game.CreateAnimation({ Name = MARKER_ANIM, DestinationId = heroId })
-        Marker.attached = true
-        Marker.lastSafe = nil
-    end
-
-    if Marker.lastSafe ~= state.safe and type(game.SetColor) == "function" then
-        Marker.lastSafe = state.safe
-        game.SetColor({
-            Id = heroId,
-            Color = state.safe and { 0.2, 1.0, 0.3, 1.0 } or { 1.0, 0.15, 0.15, 1.0 },
-            Duration = 0,
-        })
-    end
+    if Marker.attached and Marker.lastSafe == state.safe then return end
+    detachMarker(game, heroId)
+    if type(game.CreateAnimation) ~= "function" then return end
+    game.CreateAnimation({
+        Name = MARKER_ANIM,
+        DestinationId = heroId,
+        Scale = MARKER_SCALE,
+        Color = state.safe and MARKER_SAFE or MARKER_UNSAFE,
+    })
+    Marker.attached = true
+    Marker.lastSafe = state.safe
 end
 
 -- The panel box tinted to match, so peripheral vision catches the flip even
