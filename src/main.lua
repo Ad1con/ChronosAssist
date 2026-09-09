@@ -970,6 +970,10 @@ end
 -- against its own last state (Panel.visible) so a fight that stays active
 -- across many poll ticks does not re-issue the same fade every 0.1s.
 local function setPanelVisible(game, visible)
+    -- Before the anchors exist there is nothing to fade, and ScreenAnchors
+    -- entries are nil -- returning without recording `visible` leaves it at
+    -- nil so the first post-creation call still writes.
+    if not Panel.created then return end
     if Panel.visible == visible then return end
     Panel.visible = visible
     local target = visible and 1 or 0
@@ -1160,6 +1164,18 @@ local function watchFight(game, generation)
         if primary == nil then
             setPanelVisible(game, false)
         else
+            -- First Chronos of the session: build the panel now. This CANNOT
+            -- move back to load time -- CreateScreenObstacle at
+            -- modutil.once_loaded.game reaches SpawnScreenObstacle before the
+            -- engine's GroupManager exists and takes the process down with an
+            -- EXCEPTION_ACCESS_VIOLATION that no pcall can catch, because the
+            -- fault is native, not Lua. See DESIGN.md.
+            if not Panel.created then
+                local okMake, errMake = pcall(createPanelAnchors, game)
+                if not okMake then
+                    logWarn("panel creation failed, logging still works: " .. tostring(errMake))
+                end
+            end
             setPanelVisible(game, true)
             local ok, err = pcall(renderPanel, game, primary)
             if not ok then
@@ -1170,12 +1186,14 @@ local function watchFight(game, generation)
     end
 end
 
--- Idempotent: creates anchors and starts the watcher at most once. Called
--- from on_ready (first load) and on_reload (so flipping Panel/Enabled on in
--- the .cfg and hot-reloading picks it up without a restart).
+-- Idempotent: starts the watcher at most once. Called from on_ready (first
+-- load) and on_reload (so flipping Panel/Enabled on in the .cfg and
+-- hot-reloading picks it up without a restart). Deliberately touches no
+-- engine drawing API -- both entry points run during the game's own Lua
+-- init, where creating a screen obstacle is fatal. The watcher builds the
+-- panel on the first tick that finds a Chronos.
 local function ensurePanel(game)
     if not settings.values.Enabled or not settings.values.Panel then return end
-    if not Panel.created then createPanelAnchors(game) end
     if not Panel.watcherStarted then
         Panel.watcherStarted = true
         Panel.generation = Panel.generation + 1

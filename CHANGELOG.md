@@ -7,6 +7,16 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Fixed
+
+- The game crashed on launch with `EXCEPTION_ACCESS_VIOLATION` whenever the
+  panel was enabled. The panel's screen obstacles were created from
+  `on_ready`, which runs while the engine is still inside `InitLua` -- the
+  spawn reached a `GroupManager` that had no groups yet. The watcher now
+  builds the panel on the first tick that finds a Chronos, which is
+  unambiguously in gameplay. Nothing in the load path touches a drawing API
+  any more, and a test asserts that.
+
 Stage 3 of 3 (see `CHRONOS_TRAINER_SPEC.md`, one level up, not part of this
 repo): milestones and the UNAVAILABLE grid, completing the panel.
 

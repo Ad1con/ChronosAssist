@@ -199,6 +199,43 @@ practical cost: the background snaps instead of smoothly fading, while the
 text above it eases in over `FADE_DURATION`. Worth revisiting once the maintainer
 confirms whether `FadeTarget` on a plain obstacle works at all.
 
+### Why the panel is built by the watcher and not at load
+
+The first two launches with the panel enabled crashed the game outright:
+
+```
+[0]  sgg::GroupManager::GetIndex        GroupManager.h:22
+[1]  sgg::GroupManager::Add             GroupManager.cpp:191
+[2]  sgg::ScriptAction::SpawnScreenObstacle  ScriptAction.cpp:7340
+...
+[33] sgg::ScriptManager::InitLua        ScriptManager.cpp:891
+```
+
+`ensurePanel` ran from `on_ready`, which fires on `modutil.once_loaded.game`.
+That callback means the game's Lua tables exist -- not that the game is
+running. The engine was still inside `InitLua` when `CreateScreenObstacle`
+asked it to spawn into a `GroupManager` that had no groups yet.
+
+Two things about this are worth keeping in mind:
+
+* **The `pcall` around `ensurePanel` was useless.** The fault is native, not a
+  Lua error, so it never becomes a catchable value. The mod died before
+  reaching its own `logAlways`, which is why the log contained zero
+  `Adicon-ChronosAssist:` lines and the previous mod alphabetically
+  (AlwaysChaosGates) looked like the culprit.
+* **Copying DamageMeter's call was not enough.** Its `CreateScreenObstacle`
+  arguments were right; *where it calls them from* was the part that mattered,
+  and that lives in its in-run code paths, not its entry point.
+
+So `ensurePanel` now starts the watcher and nothing else. `watchFight` builds
+the anchors on the first tick that finds a Chronos, which is unambiguously
+gameplay. `setPanelVisible` returns early while `Panel.created` is false --
+without recording `Panel.visible`, so the first call after construction still
+writes rather than matching a stale "no change".
+
+Test 16.3 in `test/run_tests.lua` asserts boot creates zero obstacles. It
+exists purely so this cannot come back.
+
 ### Why one persistent watcher thread, not one per fight (unlike RealHecate)
 
 RealHecate's `watchClones` starts a fresh watcher at every split and retires

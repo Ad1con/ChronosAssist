@@ -572,20 +572,42 @@ do
 end
 
 do
+  -- REGRESSION GUARD. Loading the plugin must reach ZERO engine drawing
+  -- calls. on_ready runs inside the game's own Lua init, where
+  -- CreateScreenObstacle reaches SpawnScreenObstacle before the engine's
+  -- GroupManager exists and kills the process with an
+  -- EXCEPTION_ACCESS_VIOLATION -- a native fault, so the pcall around
+  -- ensurePanel catches nothing and the mod cannot even log that it failed.
+  -- Two launches died exactly here. Panel construction belongs to the
+  -- watcher, in gameplay; nothing may move it back.
   local G, plugin = boot()
-  local countAfterBoot = 0
-  for _ in pairs(G.obstacles) do countAfterBoot = countAfterBoot + 1 end
-  check("16.3 Panel=true (default) creates a nonzero, fixed set of obstacles",
-        countAfterBoot > 0, tostring(countAfterBoot))
+  check("16.3 Panel=true (default) still creates zero obstacles at load time",
+        next(G.obstacles) == nil, tostring(next(G.obstacles)))
 
   -- boot() already ran on_ready then on_reload once each (the ReLoad mock's
   -- contract) -- both call ensurePanel. Call it an explicit third time,
-  -- simulating a later hot reload, and confirm nothing new is created.
+  -- simulating a later hot reload, and confirm it stays inert.
   plugin.ensurePanel(G)
-  local countAfterExtra = 0
-  for _ in pairs(G.obstacles) do countAfterExtra = countAfterExtra + 1 end
-  check("16.4 ensurePanel is idempotent -- a third call creates zero new obstacles",
-        countAfterExtra == countAfterBoot, ("%d -> %d"):format(countAfterBoot, countAfterExtra))
+  check("16.4 ensurePanel is idempotent and still touches no engine API",
+        next(G.obstacles) == nil)
+
+  -- The panel arrives with the fight, not before it.
+  G.tick(1, plugin.POLL_INTERVAL)
+  check("16.3b a poll tick with no Chronos still creates nothing",
+        next(G.obstacles) == nil)
+  G.spawnChronos()
+  G.tick(1, plugin.POLL_INTERVAL)
+  local countAfterFight = 0
+  for _ in pairs(G.obstacles) do countAfterFight = countAfterFight + 1 end
+  check("16.3c the first tick that finds a Chronos builds the panel",
+        countAfterFight > 0, tostring(countAfterFight))
+
+  -- And builds it exactly once.
+  G.tick(3, plugin.POLL_INTERVAL)
+  local countLater = 0
+  for _ in pairs(G.obstacles) do countLater = countLater + 1 end
+  check("16.3d later ticks create zero new obstacles",
+        countLater == countAfterFight, ("%d -> %d"):format(countAfterFight, countLater))
 end
 
 do
@@ -596,22 +618,17 @@ do
   -- the panel's point of view, indistinguishable from "not in ActiveEnemies".
   local G, plugin = boot()
   G.tick(1, plugin.POLL_INTERVAL) -- no Chronos yet
-  local bg = G.obstacles[plugin.ScreenAnchors["Background"]]
-  check("16.5 no fight active: background alpha is 0",
-        bg.Color[4] == 0, tostring(bg.Color[4]))
-  local headerFade = nil
-  for i = #G.modifyCalls, 1, -1 do
-    if G.modifyCalls[i].Id == plugin.ScreenAnchors["HeaderTitle"] and G.modifyCalls[i].FadeTarget ~= nil then
-      headerFade = G.modifyCalls[i].FadeTarget break
-    end
-  end
-  check("16.6 no fight active: text anchors fade to 0", headerFade == 0, tostring(headerFade))
+  check("16.5 no fight active: no background anchor exists to be drawn",
+        plugin.ScreenAnchors["Background"] == nil)
+  check("16.6 no fight active: no text box is written at all",
+        #G.modifyCalls == 0, tostring(#G.modifyCalls))
 
   local chronos = G.spawnChronos()
   G.tick(1, plugin.POLL_INTERVAL)
-  bg = G.obstacles[plugin.ScreenAnchors["Background"]]
-  check("16.7 a live Chronos appears: background fades back in",
-        bg.Color[4] == plugin.LAYOUT.BACKGROUND_COLOR[4], tostring(bg.Color[4]))
+  local bg = G.obstacles[plugin.ScreenAnchors["Background"]]
+  check("16.7 a live Chronos appears: the panel is built and fades in",
+        bg ~= nil and bg.Color[4] == plugin.LAYOUT.BACKGROUND_COLOR[4],
+        bg and tostring(bg.Color[4]) or "no background")
 
   G.ActiveEnemies[chronos.ObjectId] = nil -- death, room exit, etc. -- same signal either way
   G.tick(1, plugin.POLL_INTERVAL)
