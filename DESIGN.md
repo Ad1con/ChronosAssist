@@ -236,6 +236,44 @@ writes rather than matching a stale "no change".
 Test 16.3 in `test/run_tests.lua` asserts boot creates zero obstacles. It
 exists purely so this cannot come back.
 
+### PARKED: the watcher still cannot START at load either
+
+First real playtest, 2026-09-09. The launch crash is gone and stages 1-3 work
+end to end -- the log carries a clean run through phase 1 and 2, every weapon,
+stage, eligibility gate and `tempus=3` reading correct. **The panel still never
+appears**, and the log says exactly why:
+
+```
+panel install failed, logging still works:
+  [string "Main"]:189: attempt to index global 'SessionMapState' (a nil value)
+```
+
+`Main` there is the *game's* Main.lua, not ours. Moving `createPanelAnchors`
+out of load time was necessary but not sufficient: `ensurePanel` still calls
+`game.thread(watchFight, ...)` at load, and `thread` itself reaches
+`SessionMapState`, which does not exist until a session is underway. This one
+*is* a catchable Lua error, so the mod survives and logs -- which is why stage
+1-3 output looks perfect while nothing renders.
+
+So the rule from the crash generalizes further than first written: **at load
+time, register hooks and read data -- do not draw, and do not start threads.**
+
+The fix is to start the watcher from something that only runs in a session.
+Candidates, in order of preference:
+
+* the existing `SelectWeapon` wrap -- it already fires for every enemy, and a
+  first-Chronos-seen branch there needs no new hook surface;
+* a room-start wrap (`StartRoom` / `OnAnyLoad`), which is what most mods use;
+* `ModUtil`'s once-per-session hooks, if one fits.
+
+The `SelectWeapon` route is probably right: `isTrackedChronos` already gates it,
+so "the first tick a Chronos exists" is information the wrap already has, and it
+cannot fire before a session exists.
+
+Test note: the harness calls `ensurePanel` directly and its mock `game.thread`
+has no such dependency, so no test failed. A mock that raises unless a session
+flag is set would have caught this.
+
 ### Why one persistent watcher thread, not one per fight (unlike RealHecate)
 
 RealHecate's `watchClones` starts a fresh watcher at every split and retires
