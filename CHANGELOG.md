@@ -7,6 +7,13 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Changed
+
+- The settings section is now `General (applies at next fight)`, so the config
+  says when a change starts mattering. Nothing here does anything outside a
+  Chronos fight. `Panel` is the exception and still says in its own description
+  that it needs a reload.
+
 ### Fixed
 
 - The game crashed on launch with `EXCEPTION_ACCESS_VIOLATION` whenever the

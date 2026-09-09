@@ -99,8 +99,12 @@ local CONFIG_DESCRIPTIONS = {
     GroundMarker = "Show a red or green marker under Melinoe during Chronos' two instant-kill attacks, and tint the panel to match. Red means you are standing somewhere that will kill you; green means you are safe. Off leaves the panel text to carry it alone.",
 }
 
+-- The section label answers the one question a player cannot work out alone:
+-- when does a change start mattering. Nothing here does anything outside a
+-- Chronos fight, so that is the honest answer for the section. Panel is the
+-- exception and says so in its own description -- see MODDING_HADES2.md.
 local function sectionFor(_)
-    return "General"
+    return "General (applies at next fight)"
 end
 
 -- These are the primitives Chalk itself is built on: bind a key with a default,
