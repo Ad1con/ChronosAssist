@@ -7,6 +7,15 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Fixed
+
+- **The panel now appears.** The watcher was started from `on_ready`, and
+  `game.thread` reaches `SessionMapState`, which does not exist until a
+  session is under way. That is a catchable Lua error, so the mod survived
+  and logged normally while rendering nothing at all -- two playtests
+  produced complete stage 1-3 output and no panel. It now starts from the
+  `SelectWeapon` wrap, which only runs while Chronos is taking a turn.
+
 ### Changed
 
 - The settings section is now `General (applies at next fight)`, so the config

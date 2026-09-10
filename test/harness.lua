@@ -154,7 +154,16 @@ G.wrapped = {}
 G.threads = {}
 G.threadErrors = {}
 
+-- The real thread() reaches SessionMapState (Main.lua:189), which does not
+-- exist until a session is under way. Starting the watcher at load therefore
+-- raised here and the panel silently never appeared -- twice, through two
+-- playtests, because the error is catchable and the mod logged on happily.
+-- The mock had no such dependency, so it could not have caught either one.
+-- A session exists once a room has enemies in it; spawnChronos sets the flag.
 function G.thread(fn, ...)
+  if G.SessionMapState == nil then
+    error("attempt to index global 'SessionMapState' (a nil value)", 0)
+  end
   local args = { ... }
   local co = coroutine.create(function() fn(unpack(args)) end)
   G.threads[#G.threads + 1] = { co = co }
@@ -478,6 +487,8 @@ end
 -- Spawns a tracked (or, for scoping tests, deliberately untracked) Chronos
 -- unit with the live fields main.lua reads.
 function G.spawnChronos(overrides)
+  -- An enemy in a room means a session exists, which is what thread() needs.
+  G.SessionMapState = G.SessionMapState or {}
   local id = nextId()
   local enemy = {
     ObjectId = id,

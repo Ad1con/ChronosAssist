@@ -584,18 +584,33 @@ do
   check("16.3 Panel=true (default) still creates zero obstacles at load time",
         next(G.obstacles) == nil, tostring(next(G.obstacles)))
 
-  -- boot() already ran on_ready then on_reload once each (the ReLoad mock's
-  -- contract) -- both call ensurePanel. Call it an explicit third time,
-  -- simulating a later hot reload, and confirm it stays inert.
-  plugin.ensurePanel(G)
-  check("16.4 ensurePanel is idempotent and still touches no engine API",
-        next(G.obstacles) == nil)
+  -- And loading must reach zero THREAD starts, which is the second half of
+  -- the same bug. boot() ran on_ready and on_reload; neither may have started
+  -- the watcher, because thread() reaches SessionMapState and there is no
+  -- session yet. Proven by calling ensurePanel here, at load, and requiring it
+  -- to raise -- if it ever stops raising, the harness has drifted from the
+  -- game and this guard is worthless.
+  local okEarly, errEarly = pcall(plugin.ensurePanel, G)
+  check("16.4 starting the watcher before a session raises, as it does in game",
+        okEarly == false and tostring(errEarly):find("SessionMapState", 1, true) ~= nil,
+        tostring(errEarly))
+  check("16.4b and nothing was drawn trying", next(G.obstacles) == nil)
+
+  -- The retry logic means a load-time start now heals itself on Chronos's
+  -- first turn, so its absence no longer shows up as a broken panel. It would
+  -- still put a failure in the log on every single launch, so guard it
+  -- directly: nothing may even ATTEMPT a start before a session. generation
+  -- is published on every attempt, successful or not, so it counts them.
+  local G2, plugin2 = boot()
+  check("16.4c load makes zero attempts to start the watcher",
+        plugin2.Panel.generation == 0, tostring(plugin2.Panel.generation))
 
   -- The panel arrives with the fight, not before it.
   G.tick(1, plugin.POLL_INTERVAL)
   check("16.3b a poll tick with no Chronos still creates nothing",
         next(G.obstacles) == nil)
-  G.spawnChronos()
+  local chronos = G.spawnChronos()
+  G.SelectWeapon(chronos)
   G.tick(1, plugin.POLL_INTERVAL)
   local countAfterFight = 0
   for _ in pairs(G.obstacles) do countAfterFight = countAfterFight + 1 end
@@ -624,6 +639,7 @@ do
         #G.modifyCalls == 0, tostring(#G.modifyCalls))
 
   local chronos = G.spawnChronos()
+  G.SelectWeapon(chronos)
   G.tick(1, plugin.POLL_INTERVAL)
   local bg = G.obstacles[plugin.ScreenAnchors["Background"]]
   check("16.7 a live Chronos appears: the panel is built and fades in",
@@ -642,6 +658,7 @@ do
   -- ModifyTextBox for the same content.
   local G, plugin = boot()
   local chronos = G.spawnChronos()
+  G.SelectWeapon(chronos)
   G.tick(1, plugin.POLL_INTERVAL)
   local before = G.textWriteCount(plugin.ScreenAnchors["HeaderStatus"])
   G.tick(3, plugin.POLL_INTERVAL) -- nothing about the enemy changed
@@ -881,6 +898,7 @@ do
     AIStageActive = 1, CurrentPhase = 1,
     WeaponOptions = { "ChronosGrind" }, DistanceToPlayerFake = 100,
   })
+  G.SelectWeapon(chronos)
   G.tick(1, plugin.POLL_INTERVAL)
 
   local milestoneBox = G.textBoxes[plugin.ScreenAnchors["Milestone"]]

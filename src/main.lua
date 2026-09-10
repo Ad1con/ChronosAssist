@@ -1190,18 +1190,42 @@ local function watchFight(game, generation)
     end
 end
 
--- Idempotent: starts the watcher at most once. Called from on_ready (first
--- load) and on_reload (so flipping Panel/Enabled on in the .cfg and
--- hot-reloading picks it up without a restart). Deliberately touches no
--- engine drawing API -- both entry points run during the game's own Lua
--- init, where creating a screen obstacle is fatal. The watcher builds the
--- panel on the first tick that finds a Chronos.
+-- Idempotent: starts the watcher at most once, and MUST be called from
+-- gameplay rather than from load.
+--
+-- The first attempt created the panel at load and took the process down. The
+-- second moved the drawing into the watcher but still STARTED the watcher at
+-- load, from on_ready -- and game.thread reaches SessionMapState
+-- (Main.lua:189), which does not exist until a session is under way. That one
+-- is a catchable Lua error rather than a native fault, so the mod survived and
+-- logged happily while rendering nothing at all: two playtests produced
+-- perfect stage-1-to-3 output and no panel.
+--
+-- So the rule is stronger than "do not draw at load": at load, register hooks
+-- and read data. Do not draw, and do not start threads. This is called from
+-- the SelectWeapon wrap instead, which by definition only runs when a Chronos
+-- is taking a turn -- a session, a room and a fight all exist by then.
 local function ensurePanel(game)
     if not settings.values.Enabled or not settings.values.Panel then return end
     if not Panel.watcherStarted then
+        -- The flag is set only AFTER thread() returns. Setting it first meant a
+        -- failed start latched permanently: the watcher could never be retried,
+        -- so one early call poisoned the whole session. Since SelectWeapon
+        -- calls this on every attack Chronos makes, a failure now simply gets
+        -- another go on his next turn.
+        -- Generation is published BEFORE the thread starts: the body runs
+        -- immediately, up to its first wait, and its very first line compares
+        -- its own generation against Panel.generation. Publishing afterwards
+        -- made it see a mismatch and return on the spot.
+        --
+        -- watcherStarted, by contrast, is set AFTER. Setting it first meant a
+        -- failed start latched permanently and the watcher could never be
+        -- retried. SelectWeapon calls this on every attack, so a failure now
+        -- simply gets another go on Chronos's next turn.
+        local generation = Panel.generation + 1
+        Panel.generation = generation
+        game.thread(watchFight, game, generation)
         Panel.watcherStarted = true
-        Panel.generation = Panel.generation + 1
-        game.thread(watchFight, game, Panel.generation)
     end
 end
 
@@ -1240,6 +1264,14 @@ local function installHooks(game)
     ModUtil.Path.Wrap("SelectWeapon", function(base, enemy)
         if not settings.values.Enabled or not CONFIG.isTrackedChronos(enemy) then
             return base(enemy)
+        end
+
+        -- Chronos is taking a turn, so a session, a room and a fight all
+        -- exist. This is the earliest safe moment to start the watcher, and
+        -- it is idempotent -- one boolean after the first call.
+        local okStart, errStart = pcall(ensurePanel, game)
+        if not okStart then
+            logWarn("could not start the panel watcher: " .. tostring(errStart))
         end
 
         -- Re-entrancy guard -- see the file header. Only the OUTERMOST call
@@ -1306,10 +1338,8 @@ loadSettings()
 -- every sibling mod relies on it.
 local function on_ready(game)
     if installHooks(game) then
-        local okPanel, errPanel = pcall(ensurePanel, game)
-        if not okPanel then
-            logWarn("panel install failed, logging still works: " .. tostring(errPanel))
-        end
+        -- No ensurePanel here. See its comment: starting the watcher at load
+        -- is what made the panel silently never appear.
         logAlways(("installed; logging is %s; panel is %s%s")
             :format(settings.values.Enabled and "on" or "off",
                     (settings.values.Enabled and settings.values.Panel) and "on" or "off",
@@ -1323,10 +1353,9 @@ end
 -- reload even when the panel already exists.
 local function on_reload()
     loadSettings()
-    local okPanel, errPanel = pcall(ensurePanel, rom.game)
-    if not okPanel then
-        logWarn("panel install failed on reload: " .. tostring(errPanel))
-    end
+    -- Also no ensurePanel: a reload can happen at any time, including before a
+    -- session exists. The SelectWeapon wrap picks the new settings up on the
+    -- next attack Chronos takes, which is the first moment they could matter.
     logAlways(("settings reloaded; logging is %s; panel is %s")
         :format(settings.values.Enabled and "on" or "off",
                 (settings.values.Enabled and settings.values.Panel) and "on" or "off"))

@@ -236,7 +236,7 @@ writes rather than matching a stale "no change".
 Test 16.3 in `test/run_tests.lua` asserts boot creates zero obstacles. It
 exists purely so this cannot come back.
 
-### PARKED: the watcher still cannot START at load either
+### FIXED: the watcher starts from SelectWeapon, not from load
 
 First real playtest, 2026-09-09. The launch crash is gone and stages 1-3 work
 end to end -- the log carries a clean run through phase 1 and 2, every weapon,
@@ -273,6 +273,31 @@ cannot fire before a session exists.
 Test note: the harness calls `ensurePanel` directly and its mock `game.thread`
 has no such dependency, so no test failed. A mock that raises unless a session
 flag is set would have caught this.
+
+**The fix, 2026-09-09.** `ensurePanel` is no longer called from `on_ready` or
+`on_reload`. The `SelectWeapon` wrap calls it instead: Chronos taking a turn
+means a session, a room and a fight all exist, and the call is idempotent, so
+it costs one boolean after the first time.
+
+Two ordering details in `ensurePanel` are load-bearing, and each was wrong in
+a draft:
+
+* **The generation is published BEFORE `game.thread`.** The body runs
+  immediately, up to its first wait, and its first line compares its own
+  generation against `Panel.generation`. Publishing afterwards made it see a
+  mismatch and return on the spot -- the watcher started and died in the same
+  instant, which looked exactly like it had never started.
+* **`watcherStarted` is set AFTER `game.thread` returns.** Setting it first
+  meant a failed start latched permanently: the flag said "running", nothing
+  was, and no later call would try again.
+
+Three tests hold this down. 16.4 requires `ensurePanel` to RAISE when called
+before a session, so the harness cannot drift away from the game. 16.4c
+requires load to make zero start attempts -- needed because the retry above
+makes a load-time start heal itself on Chronos's first turn, which would hide
+the regression while still logging a failure on every launch. And the mock's
+`thread` now raises without a session, as the real one does; it had no such
+dependency before, which is why it could never have caught either bug.
 
 ### Why one persistent watcher thread, not one per fight (unlike RealHecate)
 
