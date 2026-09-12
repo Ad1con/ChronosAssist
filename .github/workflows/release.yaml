@@ -1,3 +1,6 @@
+# GitHub only indexes a workflow when it sees a push that touches this file.
+# The repo's history arrived in one initial push and the workflow was never
+# registered; this comment exists so a later commit did.
 name: Release
 run-name: ${{ format('{0} {1}', inputs.is-dry-run && 'Dry-run' || 'Release', inputs.tag) }}
 
