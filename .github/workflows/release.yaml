@@ -90,7 +90,10 @@ jobs:
       - name: Publish package
         if: ${{ !inputs.is-dry-run }}
         env:
-          TCLI_AUTH_TOKEN: ${{ secrets.TCLI_AUTH_TOKEN }}
+          # Either name works. The template calls it TCLI_AUTH_TOKEN; the secret
+          # was added to most repos as THUNDERSTORE. GitHub cannot rename a
+          # secret, so accepting both costs nothing and removes a footgun.
+          TCLI_AUTH_TOKEN: ${{ secrets.TCLI_AUTH_TOKEN || secrets.THUNDERSTORE }}
         run: tcli publish --file ${{ env.artifact-path }}
 
       - name: Tag and push to repository
